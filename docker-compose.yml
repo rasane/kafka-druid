@@ -1,0 +1,133 @@
+version: '2.2'
+
+volumes:
+  metadata_data: {}
+  middle_var: {}
+  historical_var: {}
+  broker_var: {}
+  coordinator_var: {}
+  router_var: {}
+  druid_shared: {}
+  
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    # hostname: zoo1
+    # container_name: zoo1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOO_MY_ID: 1
+    ports:
+      - 2181:2181
+  
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - 9092:9092
+      - 29092:29092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  postgres:
+      container_name: postgres
+      image: postgres:latest
+      volumes:
+        - metadata_data:/var/lib/postgresql/data
+      environment:
+        - POSTGRES_PASSWORD=FoolishPassword
+        - POSTGRES_USER=druid
+        - POSTGRES_DB=druid
+
+  coordinator:
+      image: apache/druid:0.23.0
+      container_name: coordinator
+      volumes:
+        - druid_shared:/opt/shared
+        - coordinator_var:/opt/druid/var
+        - ./DruidSpec:/specs
+      depends_on: 
+        - zookeeper
+        - postgres
+      ports:
+        - "8081:8081"
+      command:
+        - coordinator
+      env_file:
+        - environment.ini
+
+  broker:
+      image: apache/druid:0.23.0
+      container_name: broker
+      volumes:
+        - broker_var:/opt/druid/var
+      depends_on: 
+        - zookeeper
+        - postgres
+        - coordinator
+      ports:
+        - "8082:8082"
+      command:
+        - broker
+      env_file:
+        - environment.ini          
+
+  historical:
+      image: apache/druid:0.23.0
+      container_name: historical
+      volumes:
+        - druid_shared:/opt/shared
+        - historical_var:/opt/druid/var
+      depends_on: 
+        - zookeeper
+        - postgres
+        - coordinator
+      ports:
+        - "8083:8083"
+      command:
+        - historical
+      env_file:
+        - environment.ini
+
+  middlemanager:
+    image: apache/druid:0.23.0
+    container_name: middlemanager
+    volumes:
+      - druid_shared:/opt/shared
+      - middle_var:/opt/druid/var
+    depends_on: 
+      - zookeeper
+      - postgres
+      - coordinator
+    ports:
+      - "8091:8091"
+      - "8100-8105:8100-8105"
+    command:
+      - middleManager
+    env_file:
+      - environment.ini
+
+  router:
+    image: apache/druid:0.23.0
+    container_name: router
+    volumes:
+      - router_var:/opt/druid/var
+    depends_on:
+      - zookeeper
+      - postgres
+      - coordinator
+    ports:
+      - "8888:8888"
+    command:
+      - router
+    env_file:
+      - environment.ini
+
